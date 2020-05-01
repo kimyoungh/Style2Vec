@@ -70,7 +70,7 @@ class Simulator:
 
         weights = weights_seq.shift(1).iloc[1:]
 
-        if weights.index[0] is not returns.index[0]:
+        if weights.index[0] != returns.index[0]:
             raise \
             ValueError("Initial dates of weights and returns are not matching!")
 
