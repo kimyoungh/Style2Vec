@@ -13,16 +13,16 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-class AlphaPortfolio(nn.Module):
+class AlphaPort(nn.Module):
     """
-        Alpha Portfolio
+        AlphaPort
     """
     def __init__(self, n_styles=16, nheads_ht=4, nlayers_ht=6,
                  sn_indim=320, sn_outdim=320,
                  d_model=320, nheads_cst=8, nlayers_cst=6,
                  dropout=0.2, max_len=5000):
         " Initialization "
-        super(AlphaPortfolio, self).__init__()
+        super(AlphaPort, self).__init__()
         self.n_styles = n_styles
         self.nheads_ht = nheads_ht
         self.nlayers_ht = nlayers_ht
@@ -38,22 +38,36 @@ class AlphaPortfolio(nn.Module):
         self.sum_net = SummaryNet(sn_indim, sn_outdim)
         self.cst_net = CrossSectionalTransformer(d_model, nheads_cst,
                                                  nlayers_cst)
-        self.pe = PositionalEncoding(d_model, dropout, max_len=5000)
+        self.scores_net = nn.Linear(d_model, 1)
+
+        self.pe = PositionalEncoding(n_styles, dropout, max_len=5000)
+
+        self.relu = nn.ReLU(inplace=True)
+
+        self.softmax = nn.Softmax(dim=0)
 
     def forward(self, style_scores):
         ss_pos = self.pe(style_scores)
         hist_stocks = self.ht_net(ss_pos)
-        stocks = self.sum_net(hist_stocks)
+        stocks_summary = self.sum_net(hist_stocks)
 
-        stocks = stocks.transpose(0, 1)
+        stocks_summary = stocks_summary.transpose(0, 1)
 
-        cross_stocks = self.cst_net(stocks).squeeze(0)
+        cross_stocks = self.cst_net(stocks_summary).squeeze(0)
+
+        weighting_scores = self.scores_net(cross_stocks)
+        weighting_scores = self.relu(weighting_scores)
+
+        weights = self.softmax(weighting_scores).view(-1)
+
+        return weights
 
     def get_historical_stock_embeddings(self, stock_embeddings):
         """
             stock embedding sequence를 입력 받아
             주식 시계열 임베딩을 반환
         """
+        self.eval()
         hist_stocks = self.ht_net(stock_embeddings)
 
         return hist_stocks
