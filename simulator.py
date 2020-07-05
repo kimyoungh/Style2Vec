@@ -1,5 +1,5 @@
 """
-    Backtesting Simulator based on embeddings of TIMES
+    Backtesting Simulator based on embeddings of Style2Vec
 
     @author: Younghyun Kim
     @Edited: 2020.04.14.
@@ -17,7 +17,7 @@ import quantM as qnt
 
 class Simulator:
     """
-        Backtesting Simulator for TIMES
+        Backtesting Simulator for Style2Vec
     """
     def __init__(self, codes=None, start_date=None, end_date=None,
                  filepath='./dataset/'):
@@ -252,3 +252,46 @@ class Simulator:
 
         return long_stocks, short_stocks, weights_long, weights_short, \
                 sim_desc[sim_ranks[:topK]], sim_desc[sim_ranks[-bottomK:]]
+
+    def calculate_traversal_correlation(self, style_score_traversed,
+                                        mf_scores, thres=0.4):
+        """
+            Spearman Correlation Coefficient를 이용하여
+            스타일 스코어와 멀티팩터 스코어의 관계 뽑아내기
+            (monotone or non-monotone)
+
+            Args:
+                style_score_traversed: 단일 스타일 스코어 조절 값
+                mf_scores: style_score_traversed 값에 대응하는
+                          멀티팩터 스코어 변화 값
+                thres: 관계 유무 기준 값(default: 0.4)
+
+            Return:
+                corrs: style score와 멀티팩터 순서별 관계
+        """
+        if style_score_traversed.shape[0] is not mf_scores.shape[0]:
+            raise ValueError(
+                "The length of style_score_traversed is not equal to that of mf_scores")
+
+        traversed_scores = np.zeros((mf_scores.shape[0],
+                                     mf_scores.shape[1] + 1))
+        traversed_scores[:, 0] = style_score_traversed
+        traversed_scores[:, 1:] = mf_scores
+
+        corr, _ = spearmanr(traversed_scores)
+        corr = corr[1:, 0].ravel()
+
+        corrs = np.zeros((corr.shape[0], 3))
+        corrs[:, 0] = np.arange(corr.shape[0])
+        corrs[:, 1] = corr  # Spearman Correlation Coefficient
+        corrs[:, 2] = abs(corr) >= thres  # Threshold
+
+        corrs = corrs[corrs[:, 2] > 0]
+        corrs = corrs[corrs[:, 1].argsort()]
+
+        factors = np.array(self.dataloader.factors)
+
+        corrs = pd.DataFrame(corrs[:, 1], columns=['Correlation'],
+                             index=factors[corrs[:, 0].astype(int)])
+
+        return corrs[::-1]
